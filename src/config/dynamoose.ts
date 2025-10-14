@@ -1,15 +1,12 @@
 import dynamoose from "dynamoose";
-// Import both DynamoDB and the config type
 import { DynamoDB, type DynamoDBClientConfig } from "@aws-sdk/client-dynamodb";
 
 const isProduction = process.env.NODE_ENV === "production";
 
-// FIX 1: Use the DynamoDBClientConfig type for your configuration object
 const clientConfig: DynamoDBClientConfig = {
   region: process.env.AWS_REGION || "ap-south-1",
 };
 
-// Now TypeScript knows that 'endpoint' and 'credentials' are valid properties
 if (!isProduction) {
   clientConfig.endpoint = "http://localhost:8000";
   clientConfig.credentials = {
@@ -18,20 +15,42 @@ if (!isProduction) {
   };
 }
 
-// FIX 2: Create an instance of 'DynamoDB', not 'DynamoDBClient'
 const ddb = new DynamoDB(clientConfig);
-
-// Set the DynamoDB instance for Dynamoose to use
 dynamoose.aws.ddb.set(ddb);
 
-if (!isProduction) {
-  console.log(
-    "✅ DynamoDB (Local) connected successfully at http://localhost:8000"
-  );
-} else {
-  console.log(
-    `✅ DynamoDB (AWS) connected successfully in region: ${clientConfig.region}`
-  );
-}
+// 1. Create an async function to check the connection
+const checkDbConnection = async () => {
+  try {
+    // Perform a simple, low-cost operation to test the connection
+    await ddb.listTables({});
+    if (!isProduction) {
+      console.log(
+        "✅ DynamoDB (Local) connected successfully at http://localhost:8000"
+      );
+    } else {
+      console.log(
+        `✅ DynamoDB (AWS) connected successfully in region: ${clientConfig.region}`
+      );
+    }
+  } catch (error) {
+    console.error("❌ Could not connect to DynamoDB.");
+    console.error(
+      "   Please ensure the Docker container is running or AWS credentials are set."
+    );
+
+    // Check if the error is an instance of the Error class
+    if (error instanceof Error) {
+      console.error("   Error details:", error.message);
+    } else {
+      // Handle cases where the thrown value is not an Error object
+      console.error("   An unknown error occurred:", error);
+    }
+
+    process.exit(1);
+  }
+};
+
+// 2. Call the function to perform the check when the app starts
+checkDbConnection();
 
 export default dynamoose;

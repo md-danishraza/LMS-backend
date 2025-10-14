@@ -1,4 +1,4 @@
-import "./config/dynamoose.ts";
+import "./config/dynamoose.js";
 
 import express from "express";
 import dotenv from "dotenv";
@@ -9,15 +9,12 @@ import morgan from "morgan";
 // import dynamoose from "dynamoose";
 
 // route imports
+import courseRoutes from "./routes/courseRoutes.js";
 
 // configs
 dotenv.config();
 
 const isProduction = process.env.NODE_ENV === "production";
-// // if ! production then connect to dynamoDb
-// if (!isProduction) {
-//   dynamoose.aws.ddb.local();
-// }
 
 // app
 const app = express();
@@ -36,6 +33,8 @@ app.use(cors());
 app.get("/", (req, res) => {
   res.send("hello from server!");
 });
+
+app.use("/courses", courseRoutes);
 
 // server
 const PORT = process.env.PORT || 3000;
