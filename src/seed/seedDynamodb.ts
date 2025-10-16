@@ -1,5 +1,5 @@
 import {
-  DynamoDBClient,
+  DynamoDB,
   DeleteTableCommand,
   ListTablesCommand,
 } from "@aws-sdk/client-dynamodb";
@@ -12,26 +12,35 @@ import Course from "../models/courseModel.js";
 import UserCourseProgress from "../models/userCourseProgressModel.js";
 import dotenv from "dotenv";
 
-dotenv.config();
-let client: DynamoDBClient;
+import { fileURLToPath } from "url";
+import { dirname } from "path";
 
+dotenv.config();
 /* DynamoDB Configuration */
 const isProduction = process.env.NODE_ENV === "production";
 
+// Use a single instance for both Dynamoose and raw SDK calls
+let ddb: DynamoDB;
+
 if (!isProduction) {
-  dynamoose.aws.ddb.local();
-  client = new DynamoDBClient({
+  // 1. Create one single, explicitly configured client for local dev
+  ddb = new DynamoDB({
     endpoint: "http://localhost:8000",
-    region: "us-east-2",
+    region: "local-region", // Region doesn't matter for local
     credentials: {
-      accessKeyId: "dummyKey123",
-      secretAccessKey: "dummyKey123",
+      accessKeyId: "dummyKey",
+      secretAccessKey: "dummySecret",
     },
   });
+
+  // 2. CRITICAL: Explicitly tell Dynamoose to use this client
+  dynamoose.aws.ddb.set(ddb);
 } else {
-  client = new DynamoDBClient({
+  // Production configuration remains the same
+  ddb = new DynamoDB({
     region: process.env.AWS_REGION || "us-east-2",
   });
+  dynamoose.aws.ddb.set(ddb);
 }
 
 /* DynamoDB Suppress Tag Warnings */
@@ -101,7 +110,7 @@ async function seedData(tableName: string, filePath: string) {
 async function deleteTable(baseTableName: string) {
   let deleteCommand = new DeleteTableCommand({ TableName: baseTableName });
   try {
-    await client.send(deleteCommand);
+    await ddb.send(deleteCommand);
     console.log(`Table deleted: ${baseTableName}`);
   } catch (err: any) {
     if (err.name === "ResourceNotFoundException") {
@@ -114,7 +123,7 @@ async function deleteTable(baseTableName: string) {
 
 async function deleteAllTables() {
   const listTablesCommand = new ListTablesCommand({});
-  const { TableNames } = await client.send(listTablesCommand);
+  const { TableNames } = await ddb.send(listTablesCommand);
 
   if (TableNames && TableNames.length > 0) {
     for (const tableName of TableNames) {
@@ -141,7 +150,9 @@ export default async function seed() {
   }
 }
 
-if (require.main === module) {
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+if (process.argv[1] === __filename) {
   seed().catch((error) => {
     console.error("Failed to run seed script:", error);
   });
