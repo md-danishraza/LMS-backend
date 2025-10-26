@@ -6,15 +6,23 @@ import bodyParser from "body-parser";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+
 // import dynamoose from "dynamoose";
 
 // route imports
 import courseRoutes from "./routes/courseRoutes.js";
+import userClerkRoutes from "./routes/userClerkRoutes.js";
+import { createClerkClient } from "@clerk/express";
 
 // configs
 dotenv.config();
 
 const isProduction = process.env.NODE_ENV === "production";
+
+// creating instance of clerk client and exporting it
+export const clerkClient = createClerkClient({
+  secretKey: process.env.CLERK_SECRET_KEY as string,
+});
 
 // app
 const app = express();
@@ -27,7 +35,14 @@ app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(morgan("common"));
-app.use(cors());
+
+app.use(
+  cors({
+    origin: "http://localhost:3000", // React app origin
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
 
 // routes
 app.get("/", (req, res) => {
@@ -35,6 +50,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/courses", courseRoutes);
+app.use("/user/clerk", userClerkRoutes);
 
 // server
 const PORT = process.env.PORT || 3000;

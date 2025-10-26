@@ -5,15 +5,17 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-  "build": "rimraf dist && tsc && cpx \"src/seed/data/**/*\" dist/seed/data",
-  "start": "node dist/index.js",
-  "dev": "tsx watch src/index.ts",
-  "seed": "tsx src/seed/seedDynamodb.ts"
-},
+    "build": "rimraf dist && tsc && cpx \"src/seed/data/**/*\" dist/seed/data",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "seed": "tsx src/seed/seedDynamodb.ts"
+  },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.899.0",
+    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@clerk/express": "^1.7.42",
     "aws-sdk": "^2.1692.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
