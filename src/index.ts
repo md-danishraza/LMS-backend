@@ -12,7 +12,11 @@ import morgan from "morgan";
 // route imports
 import courseRoutes from "./routes/courseRoutes.js";
 import userClerkRoutes from "./routes/userClerkRoutes.js";
-import { createClerkClient } from "@clerk/express";
+import {
+  clerkMiddleware,
+  createClerkClient,
+  requireAuth,
+} from "@clerk/express";
 
 // configs
 dotenv.config();
@@ -35,6 +39,8 @@ app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(morgan("common"));
+// middleware for checking clerk token
+app.use(clerkMiddleware());
 
 app.use(
   cors({
@@ -50,7 +56,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/courses", courseRoutes);
-app.use("/user/clerk", userClerkRoutes);
+app.use("/user/clerk", requireAuth(), userClerkRoutes);
 
 // server
 const PORT = process.env.PORT || 3000;
