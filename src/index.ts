@@ -12,6 +12,9 @@ import morgan from "morgan";
 // route imports
 import courseRoutes from "./routes/courseRoutes.js";
 import userClerkRoutes from "./routes/userClerkRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
+
+// middlewares
 import {
   clerkMiddleware,
   createClerkClient,
@@ -32,23 +35,26 @@ export const clerkClient = createClerkClient({
 const app = express();
 
 // middlewares
-app.use(express.json());
+const corsOptions = {
+  origin: process.env.CLIENT_URL || "http://localhost:3000", // Your frontend URL
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  optionsSuccessStatus: 200,
+};
+
+// Apply CORS globally
+app.use(cors(corsOptions));
 app.use(helmet());
 // allowing request from other domain
 app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
+app.use(express.json());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
+app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
 app.use(morgan("common"));
 // middleware for checking clerk token
 app.use(clerkMiddleware());
-
-app.use(
-  cors({
-    origin: "http://localhost:3000", // React app origin
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true,
-  })
-);
 
 // routes
 app.get("/", (req, res) => {
@@ -57,6 +63,7 @@ app.get("/", (req, res) => {
 
 app.use("/courses", courseRoutes);
 app.use("/user/clerk", requireAuth(), userClerkRoutes);
+app.use("/api/payments", paymentRoutes);
 
 // server
 const PORT = process.env.PORT || 3000;

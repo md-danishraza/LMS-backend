@@ -17,6 +17,7 @@
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@clerk/express": "^1.7.42",
     "aws-sdk": "^2.1692.0",
+    "axios": "^1.13.1",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
