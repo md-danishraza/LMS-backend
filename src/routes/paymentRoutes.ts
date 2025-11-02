@@ -3,6 +3,7 @@ import {
   createOrder,
   handleWebhook,
   getOrderStatus,
+  listTransactions,
 } from "../controllers/paymentController.js";
 import { requireAuth } from "@clerk/express";
 const router = Router();
@@ -19,5 +20,8 @@ router.get("/order-status/:userId/:orderId", requireAuth(), getOrderStatus);
 // This route MUST NOT be protected by your auth middleware,
 // as it's an automated server-to-server call.
 router.post("/webhook", handleWebhook);
+
+// get transactions
+router.get("/transactions/:userId", requireAuth(), listTransactions);
 
 export default router;

@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
 import { clerkClient } from "../index.js";
+
 export const updateUser = async (
   req: Request,
   res: Response
