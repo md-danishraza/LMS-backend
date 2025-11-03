@@ -20,6 +20,7 @@ import {
   createClerkClient,
   requireAuth,
 } from "@clerk/express";
+import path from "path";
 
 // configs
 dotenv.config();
@@ -55,6 +56,8 @@ app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
 app.use(morgan("common"));
 // middleware for checking clerk token
 app.use(clerkMiddleware());
+//
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // routes
 app.get("/", (req, res) => {
