@@ -20,6 +20,42 @@ export const listCourse = async (
     res.status(500).json({ message: "Error retreiving courses!", error });
   }
 };
+export const listTeacherCourses = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const { userId: teacherId } = getAuth(req);
+
+  if (!teacherId) {
+    res.status(401).json({ message: "User not authenticated", data: null });
+    return;
+  }
+
+  try {
+    // --- Method 1: Efficient GSI Query (Recommended) ---
+    // This query uses the index we just added.
+    // const courses = await Course.query("teacherId")
+    //   .eq(teacherId)
+    //   .using("teacherId-index")
+    //   .exec();
+
+    // --- Method 2: Inefficient Scan (If you CANNOT add a GSI) ---
+    // This code works but is very slow. It reads your ENTIRE table.
+    // Use this only if you can't update the schema.
+    const allCourses = await Course.scan().exec();
+    const courses = allCourses.filter(
+      (course) => course.teacherId === teacherId
+    );
+
+    res
+      .status(200)
+      .json({ message: "Teacher courses retrieved", data: courses });
+  } catch (error: any) {
+    res
+      .status(500)
+      .json({ message: error.message || "Error fetching courses", data: null });
+  }
+};
 
 // get course
 export const getCourse = async (req: Request, res: Response): Promise<void> => {
@@ -114,7 +150,7 @@ export const updateCourse = async (
         });
         return;
       }
-      updateData.price = Math.round(updateData.price);
+      updateData.price = Math.trunc(updateData.price);
     }
 
     if (updateData.sections) {
@@ -139,7 +175,16 @@ export const updateCourse = async (
     // updateData.image = file?.location;
     // local save
     const file = req.file;
-    updateData.image = file ? `/uploads/courses/${file.filename}` : null;
+    if (file) {
+      // 1. A new file WAS uploaded. Set the new path.
+      updateData.image = `/uploads/courses/${file.filename}`;
+    } else {
+      // 2. No new file was uploaded.
+      // We explicitly DELETE the 'image' key from the updateData object.
+      // This prevents Object.assign from overwriting the existing
+      // course.image with 'null' or 'undefined'.
+      delete updateData.image;
+    }
 
     // copying updated course object
     Object.assign(course, updateData);

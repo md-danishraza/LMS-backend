@@ -4,6 +4,7 @@ import {
   deleteCourse,
   getCourse,
   listCourse,
+  listTeacherCourses,
   updateCourse,
 } from "../controllers/courseController.js";
 import { requireAuth } from "@clerk/express";
@@ -83,6 +84,10 @@ const upload = multer({
   },
 });
 
+// list only current teacher courses
+router.get("/teacher", requireAuth(), listTeacherCourses);
+
+// list all course
 router.get("/", listCourse);
 // create course
 router.post("/", requireAuth(), createCourse);

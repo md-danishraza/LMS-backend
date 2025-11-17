@@ -93,6 +93,9 @@ export const handleAdvancedVideoUpload = async (
   return null; // Return null if not HLS/DASH to handle regular upload
 };
 
+// for user course progress controllers
+// merging utils
+
 export const mergeSections = (
   existingSections: any[],
   newSections: any[]
@@ -135,7 +138,7 @@ export const mergeChapters = (
 
   return Array.from(existingChaptersMap.values());
 };
-
+// overall progress percentage (completed/total * 100)
 export const calculateOverallProgress = (sections: any[]): number => {
   const totalChapters = sections.reduce(
     (acc: number, section: any) => acc + section.chapters.length,

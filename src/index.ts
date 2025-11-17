@@ -15,6 +15,7 @@ import { dirname } from "path";
 import courseRoutes from "./routes/courseRoutes.js";
 import userClerkRoutes from "./routes/userClerkRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
+import userCourseProgressRoutes from "./routes/userCourseProgressRoutes.js";
 
 // middlewares
 import {
@@ -75,6 +76,7 @@ app.get("/", (req, res) => {
 app.use("/courses", courseRoutes);
 app.use("/user/clerk", requireAuth(), userClerkRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/users/course-progress", requireAuth(), userCourseProgressRoutes);
 
 // server
 const PORT = process.env.PORT || 3000;

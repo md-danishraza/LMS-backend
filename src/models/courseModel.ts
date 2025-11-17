@@ -76,6 +76,10 @@ const courseSchema = new Schema(
     teacherId: {
       type: String,
       required: true,
+      index: {
+        name: "teacherId-index",
+        type: "global",
+      },
     },
     teacherName: {
       type: String,
