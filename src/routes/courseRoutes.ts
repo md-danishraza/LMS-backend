@@ -3,6 +3,7 @@ import {
   createCourse,
   deleteCourse,
   getCourse,
+  getUploadVideoUrl,
   listCourse,
   listTeacherCourses,
   updateCourse,
@@ -97,5 +98,12 @@ router.get("/:courseId", getCourse);
 router.put("/:courseId", requireAuth(), upload.single("image"), updateCourse);
 // delete course
 router.delete("/:courseId", requireAuth(), deleteCourse);
+
+// get upload/stream s3 urls
+router.post(
+  "/:courseId/sections/:sectionId/chapters/:chapterId/get-upload-url",
+  requireAuth(),
+  getUploadVideoUrl
+);
 
 export default router;

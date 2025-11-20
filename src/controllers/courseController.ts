@@ -3,6 +3,10 @@ import Course from "../models/courseModel.js";
 import { getAuth } from "@clerk/express";
 import { v4 as uuidv4 } from "uuid";
 
+// aws
+import AWS from "aws-sdk";
+const s3 = new AWS.S3();
+
 // list courses
 export const listCourse = async (
   req: Request,
@@ -228,5 +232,47 @@ export const deleteCourse = async (
     res.json({ message: "Course deleted successfully", data: course });
   } catch (error) {
     res.status(500).json({ message: "Error deleting course", error });
+  }
+};
+
+// getting uploading video to s3 URL
+export const getUploadVideoUrl = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  // file name and type
+  const { fileName, fileType } = req.body;
+
+  if (!fileName || !fileType) {
+    res.status(400).json({ message: "File name and type are required" });
+    return;
+  }
+
+  try {
+    const uniqueId = uuidv4();
+    // unique object in s3 bucket
+    const s3Key = `videos/${uniqueId}/${fileName}`;
+
+    // params
+    // bucket name from env as its private
+    const s3Params = {
+      Bucket: process.env.S3_BUCKET_NAME || "",
+      Key: s3Key,
+      Expires: 60,
+      ContentType: fileType,
+    };
+
+    // getting signed url for uploading large videos from fontend
+    const uploadUrl = s3.getSignedUrl("putObject", s3Params);
+    // accessing via cloudfront
+    const videoUrl = `${process.env.CLOUDFRONT_DOMAIN}/videos/${uniqueId}/${fileName}`;
+
+    // for each chapter we will have uploadUrl and videoUrl
+    res.json({
+      message: "Upload URL generated successfully",
+      data: { uploadUrl, videoUrl },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error generating upload URL", error });
   }
 };
