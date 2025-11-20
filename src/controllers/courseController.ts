@@ -4,8 +4,17 @@ import { getAuth } from "@clerk/express";
 import { v4 as uuidv4 } from "uuid";
 
 // aws
-import AWS from "aws-sdk";
-const s3 = new AWS.S3();
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"; // V3 Imports
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner"; // V3 Presigner
+// Initialize S3 Client (V3)
+// It automatically reads AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION from .env
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || "us-east-1",
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+});
 
 // list courses
 export const listCourse = async (
@@ -174,19 +183,24 @@ export const updateCourse = async (
       }));
     }
 
-    // // uploaded image s3
-    // const file = req.file as Express.MulterS3.File;
-    // updateData.image = file?.location;
-    // local save
-    const file = req.file;
+    // --- 3. Handle Image Upload (S3 Logic) ---
+    // Cast req.file to the S3 type to access .location and .key
+    const file = req.file as Express.MulterS3.File;
+
     if (file) {
-      // 1. A new file WAS uploaded. Set the new path.
-      updateData.image = `/uploads/courses/${file.filename}`;
+      // A new image was uploaded.
+      // If using CloudFront, construct the URL manually for better performance
+      if (process.env.CLOUDFRONT_DOMAIN) {
+        updateData.image = `${process.env.CLOUDFRONT_DOMAIN}/${file.key}`;
+      } else {
+        // Fallback to direct S3 URL
+        updateData.image = file.location;
+      }
     } else {
-      // 2. No new file was uploaded.
-      // We explicitly DELETE the 'image' key from the updateData object.
-      // This prevents Object.assign from overwriting the existing
-      // course.image with 'null' or 'undefined'.
+      // No new image was uploaded.
+      // CRITICAL: Delete the 'image' key from updateData.
+      // This ensures Object.assign does NOT overwrite the existing
+      // course.image with undefined/null.
       delete updateData.image;
     }
 
@@ -240,7 +254,6 @@ export const getUploadVideoUrl = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  // file name and type
   const { fileName, fileType } = req.body;
 
   if (!fileName || !fileType) {
@@ -250,29 +263,68 @@ export const getUploadVideoUrl = async (
 
   try {
     const uniqueId = uuidv4();
-    // unique object in s3 bucket
     const s3Key = `videos/${uniqueId}/${fileName}`;
 
-    // params
-    // bucket name from env as its private
-    const s3Params = {
-      Bucket: process.env.S3_BUCKET_NAME || "",
+    // Prepare the command
+    const command = new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET_NAME,
       Key: s3Key,
-      Expires: 60,
       ContentType: fileType,
-    };
+    });
 
-    // getting signed url for uploading large videos from fontend
-    const uploadUrl = s3.getSignedUrl("putObject", s3Params);
-    // accessing via cloudfront
-    const videoUrl = `${process.env.CLOUDFRONT_DOMAIN}/videos/${uniqueId}/${fileName}`;
+    // Generate the Pre-Signed URL
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 60 });
 
-    // for each chapter we will have uploadUrl and videoUrl
+    // Construct the public URL (via CloudFront)
+    const videoUrl = `${process.env.CLOUDFRONT_DOMAIN}/${s3Key}`;
+
     res.json({
       message: "Upload URL generated successfully",
       data: { uploadUrl, videoUrl },
     });
   } catch (error) {
+    console.error("S3 Error:", error);
     res.status(500).json({ message: "Error generating upload URL", error });
   }
 };
+
+// export const getUploadVideoUrl = async (
+//   req: Request,
+//   res: Response
+// ): Promise<void> => {
+//   // file name and type
+//   const { fileName, fileType } = req.body;
+
+//   if (!fileName || !fileType) {
+//     res.status(400).json({ message: "File name and type are required" });
+//     return;
+//   }
+
+//   try {
+//     const uniqueId = uuidv4();
+//     // unique object in s3 bucket
+//     const s3Key = `videos/${uniqueId}/${fileName}`;
+
+//     // params
+//     // bucket name from env as its private
+//     const s3Params = {
+//       Bucket: process.env.S3_BUCKET_NAME || "",
+//       Key: s3Key,
+//       Expires: 60,
+//       ContentType: fileType,
+//     };
+
+//     // getting signed url for uploading large videos from fontend
+//     const uploadUrl = s3.getSignedUrl("putObject", s3Params);
+//     // accessing via cloudfront
+//     const videoUrl = `${process.env.CLOUDFRONT_DOMAIN}/videos/${uniqueId}/${fileName}`;
+
+//     // for each chapter we will have uploadUrl and videoUrl
+//     res.json({
+//       message: "Upload URL generated successfully",
+//       data: { uploadUrl, videoUrl },
+//     });
+//   } catch (error) {
+//     res.status(500).json({ message: "Error generating upload URL", error });
+//   }
+// };

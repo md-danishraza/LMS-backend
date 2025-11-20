@@ -10,78 +10,41 @@ import {
 } from "../controllers/courseController.js";
 import { requireAuth } from "@clerk/express";
 
+// image upload
 import multer from "multer";
 import multerS3 from "multer-s3";
 import { S3Client } from "@aws-sdk/client-s3";
-// local multer
-import path from "path";
-import fs from "fs";
 
 const router = express.Router();
 
-// // Configure S3 Client
-// const s3 = new S3Client({
-//   credentials: {
-//     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-//     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-//   },
-//   region: process.env.AWS_REGION || "us-east-1",
-// });
-
-// // Configure Multer S3 Storage
-// const upload = multer({
-//   storage: multerS3({
-//     s3: s3,
-//     bucket: process.env.S3_BUCKET_NAME!,
-//     contentType: multerS3.AUTO_CONTENT_TYPE,
-//     metadata: (req, file, cb) => {
-//       cb(null, { fieldName: file.fieldname });
-//     },
-//     key: (req, file, cb) => {
-//       const fileName = `courses/${Date.now()}_${file.originalname}`;
-//       cb(null, fileName);
-//     },
-//   }),
-//   limits: {
-//     fileSize: 5 * 1024 * 1024, // 5MB limit
-//   },
-// });
-
-// Ensure uploads directory exists
-const uploadDir = "./uploads/courses";
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Configure Multer for local disk storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + "-" + file.originalname);
+// 1. Configure S3 Client
+const s3 = new S3Client({
+  region: process.env.AWS_REGION || "us-east-1",
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
 });
 
-// Configure upload with file filter
+// 2. Configure Multer S3 Storage
 const upload = multer({
-  storage: storage,
+  storage: multerS3({
+    s3: s3,
+    bucket: process.env.S3_BUCKET_NAME!,
+    // AUTO_CONTENT_TYPE is crucial so the browser displays the image
+    // instead of forcing a download.
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+    metadata: (req, file, cb) => {
+      cb(null, { fieldName: file.fieldname });
+    },
+    key: (req, file, cb) => {
+      // Generate a unique path: thumbnails/timestamp_filename
+      const fileName = `thumbnails/${Date.now()}_${file.originalname}`;
+      cb(null, fileName);
+    },
+  }),
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp/;
-    const extname = allowedTypes.test(
-      path.extname(file.originalname).toLowerCase()
-    );
-    const mimetype = allowedTypes.test(file.mimetype);
-
-    if (extname && mimetype) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only image files are allowed!"));
-    }
+    fileSize: 5 * 1024 * 1024, // 5MB limit per image
   },
 });
 

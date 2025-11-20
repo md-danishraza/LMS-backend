@@ -50,3 +50,6 @@ ehthumbs_vista.db
 # ## Test & Coverage Reports ##
 coverage/
 .nyc_output/
+
+# seed
+src/seed
