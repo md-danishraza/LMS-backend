@@ -4,9 +4,6 @@ import UserCourseProgress from "../models/userCourseProgressModel.js";
 import Course from "../models/courseModel.js";
 import { calculateOverallProgress, mergeSections } from "../utils/utils.js";
 
-// getting enrolled courses of a user
-// using UserCourseProgress model
-// bcz directly using Course model is enefficient
 export const getUserEnrolledCourses = async (
   req: Request,
   res: Response
@@ -20,14 +17,39 @@ export const getUserEnrolledCourses = async (
   }
 
   try {
-    const enrolledCourses = await UserCourseProgress.query("userId")
+    // 1. Get all progress records for this user
+    const userProgresses = await UserCourseProgress.query("userId")
       .eq(userId)
       .exec();
-    const courseIds = enrolledCourses.map((item: any) => item.courseId);
+
+    if (!userProgresses || userProgresses.length === 0) {
+      res.json({
+        message: "Enrolled courses retrieved successfully",
+        data: [],
+      });
+      return;
+    }
+
+    // 2. Get the course details
+    const courseIds = userProgresses.map((item: any) => item.courseId);
     const courses = await Course.batchGet(courseIds);
+
+    // 3. MERGE: Attach overallProgress to each course
+    const coursesWithProgress = courses.map((course: any) => {
+      const progress = userProgresses.find(
+        (p: any) => p.courseId === course.courseId
+      );
+
+      // Return the course object combined with the progress value
+      return {
+        ...course,
+        overallProgress: progress ? progress.overallProgress : 0,
+      };
+    });
+
     res.json({
       message: "Enrolled courses retrieved successfully",
-      data: courses,
+      data: coursesWithProgress,
     });
   } catch (error) {
     res
@@ -50,6 +72,7 @@ export const getUserCourseProgress = async (
 
   try {
     const progress = await UserCourseProgress.get({ userId, courseId });
+    // console.log(progress);
     if (!progress) {
       res
         .status(404)

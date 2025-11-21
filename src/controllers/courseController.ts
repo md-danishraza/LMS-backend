@@ -47,18 +47,18 @@ export const listTeacherCourses = async (
   try {
     // --- Method 1: Efficient GSI Query (Recommended) ---
     // This query uses the index we just added.
-    // const courses = await Course.query("teacherId")
-    //   .eq(teacherId)
-    //   .using("teacherId-index")
-    //   .exec();
+    const courses = await Course.query("teacherId")
+      .eq(teacherId)
+      .using("teacherId-index")
+      .exec();
 
     // --- Method 2: Inefficient Scan (If you CANNOT add a GSI) ---
     // This code works but is very slow. It reads your ENTIRE table.
     // Use this only if you can't update the schema.
-    const allCourses = await Course.scan().exec();
-    const courses = allCourses.filter(
-      (course) => course.teacherId === teacherId
-    );
+    // const allCourses = await Course.scan().exec();
+    // const courses = allCourses.filter(
+    //   (course) => course.teacherId === teacherId
+    // );
 
     res
       .status(200)
@@ -155,6 +155,7 @@ export const updateCourse = async (
     }
 
     if (updateData.price) {
+      // console.log(updateData.price);
       const price = parseInt(updateData.price);
       if (isNaN(price)) {
         res.status(400).json({
@@ -163,7 +164,9 @@ export const updateCourse = async (
         });
         return;
       }
-      updateData.price = Math.trunc(updateData.price);
+      // updateData.price = Math.trunc(updateData.price);
+      updateData.price = Math.trunc(price);
+      // console.log(updateData.price);
     }
 
     if (updateData.sections) {
