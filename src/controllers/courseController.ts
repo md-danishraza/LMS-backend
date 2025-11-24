@@ -175,7 +175,7 @@ export const updateCourse = async (
 
     // --- 3. Handle Image Upload (S3 Logic) ---
     // Cast req.file to the S3 type to access .location and .key
-    const file = req.file as Express.MulterS3.File;
+    const file = req.file as Express.Multer.File;
 
     if (file) {
       // A new image was uploaded.

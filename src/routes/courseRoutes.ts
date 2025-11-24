@@ -34,10 +34,10 @@ const upload = multer({
     // AUTO_CONTENT_TYPE is crucial so the browser displays the image
     // instead of forcing a download.
     contentType: multerS3.AUTO_CONTENT_TYPE,
-    metadata: (req, file, cb) => {
+    metadata: (req: any, file: any, cb: any) => {
       cb(null, { fieldName: file.fieldname });
     },
-    key: (req, file, cb) => {
+    key: (req: any, file: any, cb: any) => {
       // Generate a unique path: thumbnails/timestamp_filename
       const fileName = `thumbnails/${Date.now()}_${file.originalname}`;
       cb(null, fileName);
