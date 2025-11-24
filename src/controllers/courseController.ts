@@ -4,7 +4,11 @@ import { getAuth } from "@clerk/express";
 import { v4 as uuidv4 } from "uuid";
 
 // aws
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"; // V3 Imports
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+} from "@aws-sdk/client-s3"; // V3 Imports
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"; // V3 Presigner
 // Initialize S3 Client (V3)
 // It automatically reads AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION from .env
@@ -169,23 +173,6 @@ export const updateCourse = async (
       // console.log(updateData.price);
     }
 
-    if (updateData.sections) {
-      // if sections exist than parse
-      const sectionsData =
-        typeof updateData.sections === "string"
-          ? JSON.parse(updateData.sections)
-          : updateData.sections;
-
-      updateData.sections = sectionsData.map((section: any) => ({
-        ...section,
-        sectionId: section.sectionId || uuidv4(),
-        chapters: section.chapters.map((chapter: any) => ({
-          ...chapter,
-          chapterId: chapter.chapterId || uuidv4(),
-        })),
-      }));
-    }
-
     // --- 3. Handle Image Upload (S3 Logic) ---
     // Cast req.file to the S3 type to access .location and .key
     const file = req.file as Express.MulterS3.File;
@@ -207,6 +194,50 @@ export const updateCourse = async (
       delete updateData.image;
     }
 
+    // --- 3. Video Cleanup Logic ---
+    if (updateData.sections) {
+      const sectionsData =
+        typeof updateData.sections === "string"
+          ? JSON.parse(updateData.sections)
+          : updateData.sections;
+
+      // A. Collect ALL videos currently in the DB (Old Videos)
+      const oldVideos = new Set<string>();
+      course.sections.forEach((section: any) => {
+        section.chapters.forEach((chapter: any) => {
+          if (chapter.video) oldVideos.add(chapter.video);
+        });
+      });
+
+      // B. Prepare New Sections Data
+      updateData.sections = sectionsData.map((section: any) => ({
+        ...section,
+        sectionId: section.sectionId || uuidv4(),
+        chapters: section.chapters.map((chapter: any) => ({
+          ...chapter,
+          chapterId: chapter.chapterId || uuidv4(),
+        })),
+      }));
+
+      // C. Collect ALL videos in the incoming update (New Videos)
+      const newVideos = new Set<string>();
+      updateData.sections.forEach((section: any) => {
+        section.chapters.forEach((chapter: any) => {
+          if (chapter.video) newVideos.add(chapter.video);
+        });
+      });
+
+      // D. Find Orphaned Videos (In Old but NOT in New)
+      const videosToDelete = Array.from(oldVideos).filter(
+        (videoUrl) => !newVideos.has(videoUrl)
+      );
+
+      // E. Delete them from S3
+      if (videosToDelete.length > 0) {
+        await Promise.all(videosToDelete.map((url) => deleteFileFromS3(url)));
+      }
+    }
+
     // copying updated course object
     Object.assign(course, updateData);
     await course.save();
@@ -226,7 +257,7 @@ export const deleteCourse = async (
   const { userId } = getAuth(req);
 
   if (!courseId || !userId) {
-    res.status(400).json({ message: "Course Id and User Id are required" });
+    res.status(400).json({ message: "Ids required" });
     return;
   }
 
@@ -238,16 +269,44 @@ export const deleteCourse = async (
     }
 
     if (course.teacherId !== userId) {
-      res
-        .status(403)
-        .json({ message: "Not authorized to delete this course " });
+      res.status(403).json({ message: "Not authorized" });
       return;
     }
 
+    // --- 1. Collect All Assets to Delete ---
+    const assetsToDelete: string[] = [];
+
+    // Add Thumbnail
+    if (course.image) {
+      assetsToDelete.push(course.image);
+    }
+
+    // Add All Videos
+    if (course.sections) {
+      course.sections.forEach((section: any) => {
+        section.chapters.forEach((chapter: any) => {
+          if (chapter.video) {
+            assetsToDelete.push(chapter.video);
+          }
+        });
+      });
+    }
+
+    // --- 2. Delete Assets from S3 ---
+    if (assetsToDelete.length > 0) {
+      // Run deletions in parallel
+      await Promise.all(assetsToDelete.map((url) => deleteFileFromS3(url)));
+    }
+
+    // --- 3. Delete from Database ---
     await Course.delete(courseId);
 
-    res.json({ message: "Course deleted successfully", data: course });
+    res.json({
+      message: "Course and all assets deleted successfully",
+      data: course,
+    });
   } catch (error) {
+    console.error("Delete Error:", error);
     res.status(500).json({ message: "Error deleting course", error });
   }
 };
@@ -331,3 +390,49 @@ export const getUploadVideoUrl = async (
 //     res.status(500).json({ message: "Error generating upload URL", error });
 //   }
 // };
+
+/**
+ * Helper: Extract S3 Key from URL and Delete Object
+ * URL format: https://domain.com/videos/xyz.mp4 -> Key: videos/xyz.mp4
+ */
+const deleteFileFromS3 = async (fileUrl: string) => {
+  if (!fileUrl) return;
+
+  try {
+    // 1. Extract the Key.
+    // We assume the URL ends with the key.
+    // Example: https://...cloudfront.net/videos/123.mp4
+    // We split by the domain and take the last part.
+    const splitUrl = fileUrl.split("/");
+    // Join the last parts back together if your structure is complex,
+    // or better: rely on the fact that your upload logic uses specific folders.
+
+    // Robust way: Remove the domain part.
+    // If your domain is in env, use that to slice.
+    // Fallback: assume structure folder/filename
+
+    // Simple extraction based on your specific folder structure 'videos/' or 'thumbnails/'
+    let key = "";
+    if (fileUrl.includes("/videos/")) {
+      key = "videos/" + fileUrl.split("/videos/")[1];
+    } else if (fileUrl.includes("/thumbnails/")) {
+      key = "thumbnails/" + fileUrl.split("/thumbnails/")[1];
+    } else if (fileUrl.includes("/courses/")) {
+      // Legacy support if you had a 'courses' folder
+      key = "courses/" + fileUrl.split("/courses/")[1];
+    }
+
+    if (!key) return;
+
+    const command = new DeleteObjectCommand({
+      Bucket: process.env.S3_BUCKET_NAME,
+      Key: key,
+    });
+
+    await s3Client.send(command);
+    console.log(`Deleted S3 Object: ${key}`);
+  } catch (error) {
+    console.error(`Failed to delete file from S3: ${fileUrl}`, error);
+    // We suppress the error so it doesn't stop the main DB operation
+  }
+};
