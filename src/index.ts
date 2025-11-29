@@ -9,6 +9,8 @@ import morgan from "morgan";
 // server with socketIO
 import { createServer } from "http";
 import { Server } from "socket.io";
+// rate limiter
+import rateLimit from "express-rate-limit";
 
 // Model
 import ChatMessage from "./models/chatMessageModel.js";
@@ -21,11 +23,13 @@ import userClerkRoutes from "./routes/userClerkRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import userCourseProgressRoutes from "./routes/userCourseProgressRoutes.js";
 import mentorshipRoutes from "./routes/mentorShipRoutes.js";
+import emailRoutes from "./routes/emailRoutes.js";
+import { clerkClient } from "@clerk/clerk-sdk-node";
 
 // middlewares
 import {
   clerkMiddleware,
-  createClerkClient,
+  // createClerkClient,
   requireAuth,
 } from "@clerk/express";
 
@@ -33,9 +37,10 @@ import {
 dotenv.config();
 
 // creating instance of clerk client and exporting it
-export const clerkClient = createClerkClient({
-  secretKey: process.env.CLERK_SECRET_KEY as string,
-});
+// export const clerkClient = createClerkClient({
+//   secretKey: process.env.CLERK_SECRET_KEY as string,
+// });
+export { clerkClient };
 
 // app
 const app = express();
@@ -49,32 +54,65 @@ const io = new Server(httpServer, {
   },
 });
 
-// --- 2. Socket.io Logic ---
-io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+// --- 2. SECURITY: Rate Limiter (Prevent DDoS/Brute Force) ---
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: "Too many requests from this IP, please try again later.",
+});
+app.use(limiter);
 
-  // User joins a session room
+// --- 3. SECURITY: Socket.io Authentication Middleware ---
+// This blocks anyone who doesn't have a valid Clerk Token
+io.use(async (socket, next) => {
+  try {
+    // Client must send token in auth object: io(url, { auth: { token: "..." } })
+    const token = socket.handshake.auth.token;
+
+    if (!token) {
+      return next(new Error("Authentication error: No token provided"));
+    }
+
+    // Verify token with Clerk
+    // This throws an error if token is invalid or expired
+    const decoded = await clerkClient.verifyToken(token);
+
+    // Attach the REAL user ID to the socket object
+    // We do NOT trust the userId sent from the frontend body
+    socket.data.userId = decoded.sub;
+
+    next();
+  } catch (err) {
+    console.error("Socket authentication failed:", err);
+    next(new Error("Authentication error"));
+  }
+});
+
+// --- 4. Secured Socket Logic ---
+io.on("connection", (socket) => {
+  // console.log("User connected:", socket.data.userId); // Now we know WHO connected
+
   socket.on("joinRoom", ({ sessionId }) => {
+    // Optional TODO: Check DB if socket.data.userId is actually
+    // the teacher or student of this sessionId for extra security.
     socket.join(sessionId);
-    // console.log(`User joined room: ${sessionId}`);
   });
 
-  // User sends a message
   socket.on("sendMessage", async (data) => {
-    const { sessionId, senderId, senderName, text } = data;
+    // SECURITY: We overwrite senderId with the authenticated ID
+    const senderId = socket.data.userId;
+    const { sessionId, senderName, text } = data;
 
-    // A. Save to Database (DynamoDB)
     try {
       const newMessage = new ChatMessage({
         sessionId,
         timestamp: Date.now(),
-        senderId,
+        senderId, // Secure ID
         senderName,
         text,
       });
       await newMessage.save();
 
-      // B. Broadcast to everyone in the room (including sender)
       io.to(sessionId).emit("newMessage", newMessage);
     } catch (err) {
       console.error("Error saving chat message:", err);
@@ -101,7 +139,6 @@ app.use(helmet());
 // allowing request from other domain
 app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
 app.use(express.json());
-app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use("/api/payments/webhook", express.raw({ type: "application/json" }));
 app.use(morgan("common"));
@@ -118,6 +155,7 @@ app.use("/user/clerk", requireAuth(), userClerkRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/users/course-progress", requireAuth(), userCourseProgressRoutes);
 app.use("/mentorship", mentorshipRoutes);
+app.use("/api/emails", emailRoutes);
 
 // server
 const PORT = process.env.PORT || 3000;
